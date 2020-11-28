@@ -1,0 +1,12 @@
+[package]
+name = "ruth"
+version = "0.0.1"
+description = "A set of command line tools for Ethereum developers"
+authors = ["Franco Victorio <victorio.franco@gmail.com>"]
+edition = "2018"
+license = "MIT"
+keywords = ["cli", "ethereum", "blockchain"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
