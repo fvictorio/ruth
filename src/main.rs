@@ -60,6 +60,14 @@ enum RuthCommands {
         #[structopt(subcommand)]
         entity: GetEntity,
     },
+    /// Send a transaction
+    Send {
+        #[structopt(long, short)]
+        from: Option<String>,
+
+        #[structopt(long, short)]
+        to: Option<String>,
+    },
 }
 
 #[derive(StructOpt)]
@@ -82,6 +90,26 @@ fn get_network(network_flag: String) -> String {
     };
 
     result
+}
+
+fn string_to_address(address: &str) -> Address {
+    let given_address = String::from(address);
+
+    let address = if address.starts_with("0x") {
+        &address[2..]
+    } else {
+        address
+    };
+
+    let address = hex::decode(address).expect(&format!("Invalid address: `{}`", &given_address));
+
+    let mut address_bytes = [0u8; 20];
+
+    for (i, b) in address.iter().enumerate() {
+        address_bytes[i] = *b;
+    }
+
+    H160::try_from(address_bytes).expect(&format!("Invalid address: `{}`", &given_address))
 }
 
 #[tokio::main]
@@ -152,6 +180,32 @@ pub async fn main() {
                     eprintln!("Transaction with hash `{}` not found", tx_hash_str);
                 }
             }
+        },
+        RuthCommands::Send { from, to } => {
+            let provider = Provider::<Http>::try_from(network)
+                .expect("could not instantiate HTTP Provider");
+
+            let accounts = provider.get_accounts().await.expect("failed to fetch accounts");
+            if accounts.is_empty() {
+                panic!("The node has no unlocked accounts")
+            }
+
+            let from = from.map(|a| string_to_address(&a)).unwrap_or(accounts[0]);
+            let to = to.map(|a| string_to_address(&a)).unwrap_or(H160::zero());
+
+            let to = NameOrAddress::from(to);
+
+            let tx = provider.send_transaction(TransactionRequest{
+                from: Some(from),
+                to: Some(to),
+                value: None,
+                gas: None,
+                gas_price: None,
+                data: None,
+                nonce: None,
+            }, None).await.expect("Failed to send transaction");
+
+            println!("0x{}", hex::encode(tx.to_fixed_bytes()));
         },
     }
 }
