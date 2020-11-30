@@ -103,6 +103,8 @@ fn string_to_address(address: &str) -> Address {
 
     let address = hex::decode(address).expect(&format!("Invalid address: `{}`", &given_address));
 
+    assert!(address.len() == 20);
+
     let mut address_bytes = [0u8; 20];
 
     for (i, b) in address.iter().enumerate() {
