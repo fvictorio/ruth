@@ -1,5 +1,6 @@
 mod random;
 
+use anyhow::{anyhow, Context, Result};
 use ethers::prelude::*;
 use ethers::providers::{Http, Provider};
 use std::convert::TryFrom;
@@ -92,7 +93,7 @@ fn get_network(network_flag: String) -> String {
     result
 }
 
-fn string_to_address(address: &str) -> Address {
+fn string_to_address(address: &str) -> Result<Address> {
     let given_address = String::from(address);
 
     let address = if address.starts_with("0x") {
@@ -101,9 +102,15 @@ fn string_to_address(address: &str) -> Address {
         address
     };
 
-    let address = hex::decode(address).expect(&format!("Invalid address: `{}`", &given_address));
+    let address = hex::decode(address).context(format!("Invalid hex: `{}`", given_address))?;
 
-    assert!(address.len() == 20);
+    if address.len() != 20 {
+        return Err(anyhow!(
+            "Address `{}` has `{}` bytes, expected 20",
+            given_address,
+            address.len()
+        ));
+    }
 
     let mut address_bytes = [0u8; 20];
 
@@ -111,11 +118,13 @@ fn string_to_address(address: &str) -> Address {
         address_bytes[i] = *b;
     }
 
-    H160::try_from(address_bytes).expect(&format!("Invalid address: `{}`", &given_address))
+    H160::try_from(address_bytes).context(format!("COuldn't convert to address"))
 }
 
-#[tokio::main]
-pub async fn main() {
+#[derive(Debug)]
+pub struct RuthError(String);
+
+async fn main_async() -> Result<(), RuthError> {
     let opt = Opt::from_args();
 
     let network = get_network(opt.network);
@@ -135,13 +144,20 @@ pub async fn main() {
         },
         RuthCommands::Get { entity } => match entity {
             GetEntity::Block { number } => {
-                let provider = Provider::<Http>::try_from(network)
-                    .expect("could not instantiate HTTP Provider");
+                let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
+                    RuthError(format!("Error trying to connect to {}: {}", &network, err))
+                })?;
 
-                let block = provider.get_block(number).await.unwrap();
+                let block = provider.get_block(number).await.map_err(|err| {
+                    RuthError(format!(
+                        "Error getting block `{}` from network `{}`: {}",
+                        number, &network, err
+                    ))
+                })?;
 
                 if let Some(block) = block {
-                    let block_json = serde_json::to_string_pretty(&block).unwrap();
+                    let block_json = serde_json::to_string_pretty(&block)
+                        .map_err(|err| RuthError(format!("Error parsing block object: {}", err)))?;
 
                     println!("{}", block_json);
                 } else {
@@ -157,7 +173,7 @@ pub async fn main() {
                     tx_hash
                 };
 
-                let provider = Provider::<Http>::try_from(network)
+                let provider = Provider::<Http>::try_from(&network[..])
                     .expect("could not instantiate HTTP Provider");
 
                 let tx_hash = hex::decode(tx_hash).expect("invalid transaction hash");
@@ -172,10 +188,16 @@ pub async fn main() {
 
                 let tx_hash = H256::try_from(tx_hash_bytes).expect("Invalid transaction hash");
 
-                let tx = provider.get_transaction(tx_hash).await.unwrap();
+                let tx = provider.get_transaction(tx_hash).await.map_err(|err| {
+                    RuthError(format!(
+                        "Error getting tx `{}` from network `{}`: {}",
+                        tx_hash_str, &network, err
+                    ))
+                })?;
 
                 if let Some(tx) = tx {
-                    let tx_json = serde_json::to_string_pretty(&tx).unwrap();
+                    let tx_json = serde_json::to_string_pretty(&tx)
+                        .map_err(|err| RuthError(format!("Error parsing block object: {}", err)))?;
 
                     println!("{}", tx_json);
                 } else {
@@ -184,30 +206,56 @@ pub async fn main() {
             }
         },
         RuthCommands::Send { from, to } => {
-            let provider = Provider::<Http>::try_from(network)
-                .expect("could not instantiate HTTP Provider");
+            let provider =
+                Provider::<Http>::try_from(network).expect("could not instantiate HTTP Provider");
 
-            let accounts = provider.get_accounts().await.expect("failed to fetch accounts");
+            let accounts = provider
+                .get_accounts()
+                .await
+                .expect("failed to fetch accounts");
             if accounts.is_empty() {
-                panic!("The node has no unlocked accounts")
+                return Err(RuthError(String::from("The node has no unlocked accounts")));
             }
 
-            let from = from.map(|a| string_to_address(&a)).unwrap_or(accounts[0]);
-            let to = to.map(|a| string_to_address(&a)).unwrap_or(H160::zero());
+            let from_address = if let Some(f) = from {
+                string_to_address(&f).map_err(|err| {
+                    RuthError(format!("Invalid \"from\" address `{}`: {}", &f, err))
+                })?
+            } else {
+                accounts[0]
+            };
 
-            let to = NameOrAddress::from(to);
+            let to_address = if let Some(t) = to {
+                string_to_address(&t)
+                    .map_err(|err| RuthError(format!("Invalid \"to\" address `{}`: {}", &t, err)))?
+            } else {
+                accounts[0]
+            };
 
-            let tx = provider.send_transaction(TransactionRequest{
-                from: Some(from),
-                to: Some(to),
-                value: None,
-                gas: None,
-                gas_price: None,
-                data: None,
-                nonce: None,
-            }, None).await.expect("Failed to send transaction");
+            let tx = provider
+                .send_transaction(
+                    TransactionRequest {
+                        from: Some(from_address),
+                        to: Some(NameOrAddress::from(to_address)),
+                        value: None,
+                        gas: None,
+                        gas_price: None,
+                        data: None,
+                        nonce: None,
+                    },
+                    None,
+                )
+                .await
+                .expect("Failed to send transaction");
 
             println!("0x{}", hex::encode(tx.to_fixed_bytes()));
-        },
+        }
     }
+
+    Ok(())
+}
+
+pub fn main() -> Result<(), RuthError> {
+    let mut rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(main_async())
 }

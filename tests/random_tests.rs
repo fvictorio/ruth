@@ -71,4 +71,3 @@ fn random_bytes_with_length() {
 
     assert_eq!(stdout.len(), 10);
 }
-
