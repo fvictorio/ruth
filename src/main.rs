@@ -37,7 +37,7 @@ enum GetEntity {
     /// Get a block given its number
     #[structopt(alias = "a")]
     Block {
-        /// The number of the block to fetch
+        /// The number of the block to fetch, or "number" to get the number of the latest block
         number: String,
     },
 
@@ -130,6 +130,11 @@ fn string_to_address(address: &str) -> Result<Address> {
 #[derive(Debug)]
 pub struct RuthError(String);
 
+fn get_provider(network: &str) -> Result<Provider<Http>, RuthError> {
+    Provider::<Http>::try_from(network)
+        .map_err(|err| RuthError(format!("Error trying to connect to {}: {}", &network, err)))
+}
+
 async fn main_async() -> Result<(), RuthError> {
     let opt = Opt::from_args();
 
@@ -150,9 +155,7 @@ async fn main_async() -> Result<(), RuthError> {
         },
         RuthCommands::Get { entity } => match entity {
             GetEntity::Block { number } => {
-                let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
-                    RuthError(format!("Error trying to connect to {}: {}", &network, err))
-                })?;
+                let provider = get_provider(&network)?;
 
                 if number == "number" {
                     let block_number = provider
@@ -193,9 +196,7 @@ async fn main_async() -> Result<(), RuthError> {
                     tx_hash
                 };
 
-                let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
-                    RuthError(format!("Error trying to connect to {}: {}", &network, err))
-                })?;
+                let provider = get_provider(&network)?;
 
                 let tx_hash = hex::decode(tx_hash).map_err(|err| {
                     RuthError(format!("Invalid tx_hash `{}`: {}", tx_hash_str, err))
@@ -234,9 +235,7 @@ async fn main_async() -> Result<(), RuthError> {
             }
         },
         RuthCommands::Send { from, to, value } => {
-            let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
-                RuthError(format!("Error trying to connect to {}: {}", &network, err))
-            })?;
+            let provider = get_provider(&network)?;
 
             let accounts = provider.get_accounts().await.map_err(|err| {
                 RuthError(format!(
