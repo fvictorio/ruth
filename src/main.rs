@@ -1,9 +1,12 @@
 mod random;
 
 use anyhow::{anyhow, Context, Result};
+use atty::Stream;
+use colored::*;
 use ethers::prelude::*;
 use ethers::providers::{Http, Provider};
 use std::convert::TryFrom;
+use std::process;
 use structopt::StructOpt;
 
 use random::*;
@@ -161,11 +164,9 @@ async fn main_async() -> Result<(), RuthError> {
                     return Ok(());
                 }
 
-                let number = number
-                    .parse::<u64>()
-                    .map_err(|err| {
-                        RuthError(format!("Invalid block number `{}`: {}", number, err))
-                    })?;
+                let number = number.parse::<u64>().map_err(|err| {
+                    RuthError(format!("Invalid block number `{}`: {}", number, err))
+                })?;
 
                 let block = provider.get_block(number).await.map_err(|err| {
                     RuthError(format!(
@@ -288,7 +289,16 @@ async fn main_async() -> Result<(), RuthError> {
     Ok(())
 }
 
-pub fn main() -> Result<(), RuthError> {
+pub fn main() {
     let mut rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(main_async())
+    if let Err(RuthError(message)) = rt.block_on(main_async()) {
+        let message = format!("[ruth error] {}", message);
+        if atty::is(Stream::Stdout) {
+            println!("{}", message.red());
+        } else {
+            println!("{}", message);
+        }
+
+        process::exit(1);
+    }
 }
