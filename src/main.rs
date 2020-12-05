@@ -1,3 +1,5 @@
+#![allow(clippy::manual_strip)]
+
 mod random;
 
 use anyhow::{anyhow, Context, Result};
@@ -87,16 +89,14 @@ struct Opt {
 }
 
 fn get_network(network_flag: String) -> String {
-    let result = match &network_flag[..] {
+    match &network_flag[..] {
         "mainnet" => String::from("https://mainnet.infura.io/v3/76fb6c10f1584483a45a0a28e91b07ad"),
         "ropsten" => String::from("https://ropsten.infura.io/v3/76fb6c10f1584483a45a0a28e91b07ad"),
         "rinkeby" => String::from("https://rinkeby.infura.io/v3/76fb6c10f1584483a45a0a28e91b07ad"),
         "goerli" => String::from("https://goerli.infura.io/v3/76fb6c10f1584483a45a0a28e91b07ad"),
         "kovan" => String::from("https://kovan.infura.io/v3/76fb6c10f1584483a45a0a28e91b07ad"),
         _ => network_flag,
-    };
-
-    result
+    }
 }
 
 fn string_to_address(address: &str) -> Result<Address> {
@@ -124,7 +124,7 @@ fn string_to_address(address: &str) -> Result<Address> {
         address_bytes[i] = *b;
     }
 
-    H160::try_from(address_bytes).context(format!("COuldn't convert to address"))
+    H160::try_from(address_bytes).context("Couldn't convert to address")
 }
 
 #[derive(Debug)]
@@ -264,7 +264,7 @@ async fn main_async() -> Result<(), RuthError> {
                 accounts[0]
             };
 
-            let value = value.map(|v| U256::from(v));
+            let value = value.map(U256::from);
 
             let tx = provider
                 .send_transaction(
