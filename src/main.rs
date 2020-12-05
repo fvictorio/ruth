@@ -33,7 +33,7 @@ enum GetEntity {
     #[structopt(alias = "a")]
     Block {
         /// The number of the block to fetch
-        number: u64,
+        number: String,
     },
 
     /// Generate a transaction object given its hash
@@ -68,6 +68,9 @@ enum RuthCommands {
 
         #[structopt(long, short)]
         to: Option<String>,
+
+        #[structopt(long, short)]
+        value: Option<u64>,
     },
 }
 
@@ -148,6 +151,22 @@ async fn main_async() -> Result<(), RuthError> {
                     RuthError(format!("Error trying to connect to {}: {}", &network, err))
                 })?;
 
+                if number == "number" {
+                    let block_number = provider
+                        .get_block_number()
+                        .await
+                        .map_err(|err| RuthError(format!("Error getting block number: {}", err)))?;
+
+                    println!("{}", block_number);
+                    return Ok(());
+                }
+
+                let number = number
+                    .parse::<u64>()
+                    .map_err(|err| {
+                        RuthError(format!("Invalid block number `{}`: {}", number, err))
+                    })?;
+
                 let block = provider.get_block(number).await.map_err(|err| {
                     RuthError(format!(
                         "Error getting block `{}` from network `{}`: {}",
@@ -213,7 +232,7 @@ async fn main_async() -> Result<(), RuthError> {
                 }
             }
         },
-        RuthCommands::Send { from, to } => {
+        RuthCommands::Send { from, to, value } => {
             let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
                 RuthError(format!("Error trying to connect to {}: {}", &network, err))
             })?;
@@ -244,12 +263,14 @@ async fn main_async() -> Result<(), RuthError> {
                 accounts[0]
             };
 
+            let value = value.map(|v| U256::from(v));
+
             let tx = provider
                 .send_transaction(
                     TransactionRequest {
                         from: Some(from_address),
                         to: Some(NameOrAddress::from(to_address)),
-                        value: None,
+                        value,
                         gas: None,
                         gas_price: None,
                         data: None,
