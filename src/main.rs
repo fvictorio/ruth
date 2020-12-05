@@ -173,10 +173,13 @@ async fn main_async() -> Result<(), RuthError> {
                     tx_hash
                 };
 
-                let provider = Provider::<Http>::try_from(&network[..])
-                    .expect("could not instantiate HTTP Provider");
+                let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
+                    RuthError(format!("Error trying to connect to {}: {}", &network, err))
+                })?;
 
-                let tx_hash = hex::decode(tx_hash).expect("invalid transaction hash");
+                let tx_hash = hex::decode(tx_hash).map_err(|err| {
+                    RuthError(format!("Invalid tx_hash `{}`: {}", tx_hash_str, err))
+                })?;
 
                 assert!(tx_hash.len() == 32);
 
@@ -186,7 +189,12 @@ async fn main_async() -> Result<(), RuthError> {
                     tx_hash_bytes[i] = *b;
                 }
 
-                let tx_hash = H256::try_from(tx_hash_bytes).expect("Invalid transaction hash");
+                let tx_hash = H256::try_from(tx_hash_bytes).map_err(|err| {
+                    RuthError(format!(
+                        "Invalid transaction hash `{}`: {}",
+                        tx_hash_str, err
+                    ))
+                })?;
 
                 let tx = provider.get_transaction(tx_hash).await.map_err(|err| {
                     RuthError(format!(
@@ -206,13 +214,17 @@ async fn main_async() -> Result<(), RuthError> {
             }
         },
         RuthCommands::Send { from, to } => {
-            let provider =
-                Provider::<Http>::try_from(network).expect("could not instantiate HTTP Provider");
+            let provider = Provider::<Http>::try_from(&network[..]).map_err(|err| {
+                RuthError(format!("Error trying to connect to {}: {}", &network, err))
+            })?;
 
-            let accounts = provider
-                .get_accounts()
-                .await
-                .expect("failed to fetch accounts");
+            let accounts = provider.get_accounts().await.map_err(|err| {
+                RuthError(format!(
+                    "Error getting accounts from network `{}`: {}",
+                    &network, err
+                ))
+            })?;
+
             if accounts.is_empty() {
                 return Err(RuthError(String::from("The node has no unlocked accounts")));
             }
@@ -246,7 +258,7 @@ async fn main_async() -> Result<(), RuthError> {
                     None,
                 )
                 .await
-                .expect("Failed to send transaction");
+                .map_err(|err| RuthError(format!("Failed to send transaction: {}", err)))?;
 
             println!("0x{}", hex::encode(tx.to_fixed_bytes()));
         }
